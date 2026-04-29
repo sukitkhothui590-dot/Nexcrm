@@ -1,0 +1,8 @@
+node_modules/
+.vercel/
+*.log
+data/db.json
+.env
+.env.*
+!data/db.example.json
+!db/schema.sql
