@@ -7,7 +7,7 @@
   "scripts": {
     "start": "node server.js",
     "dev": "node server.js",
-    "check": "node --check server.js && node --check public/app-enhanced.js && node --check \"api/[...path].js\" && node --check src/config.js && node --check src/http.js && node --check src/rbac.js && node --check src/security.js && node --check src/store.js && node --check src/time.js",
+    "check": "node --check server.js && node --check public/app-enhanced.js && node --check api/index.js && node --check \"api/[...path].js\" && node --check src/config.js && node --check src/http.js && node --check src/rbac.js && node --check src/security.js && node --check src/store.js && node --check src/time.js",
     "build": "npm run check"
   },
   "dependencies": {
