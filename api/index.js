@@ -1,4 +1,4 @@
-import { handleRequest } from "./server.js";
+import { handleRequest } from "../server.js";
 
 function apiPathFromRequest(req) {
   const url = new URL(req.url || "/", "http://localhost");
