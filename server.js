@@ -376,7 +376,6 @@ async function serveStatic(req, res, pathname) {
 }
 
 async function handleApi(req, res, url) {
-  const db = await readDatabase();
   const method = req.method || "GET";
   const pathname = url.pathname;
 
@@ -384,6 +383,8 @@ async function handleApi(req, res, url) {
     sendJson(res, 200, { ok: true, app: "NexCrm", time: nowIso() });
     return;
   }
+
+  const db = await readDatabase();
 
   if (method === "POST" && pathname === "/api/login") {
     const body = await parseBody(req);
