@@ -2,7 +2,10 @@ import { handleRequest } from "../server.js";
 
 function apiPathFromRequest(req) {
   const url = new URL(req.url || "/", "http://localhost");
-  const path = url.searchParams.get("path") || "";
+  let path = url.searchParams.get("path") || "";
+  if (!path || path === ":path*") {
+    path = url.pathname.replace(/^\/api\/?/, "");
+  }
   url.searchParams.delete("path");
   const query = url.searchParams.toString();
   return `/api/${path}${query ? `?${query}` : ""}`;
