@@ -2,14 +2,18 @@
   "version": 2,
   "cleanUrls": true,
   "functions": {
-    "api/[...path].js": {
+    "api-entry.js": {
       "includeFiles": "public/**"
     }
   },
   "routes": [
     {
       "src": "/api/(.*)",
-      "dest": "/api/[...path].js"
+      "dest": "/api-entry.js?path=$1"
+    },
+    {
+      "src": "/api",
+      "dest": "/api-entry.js?path="
     },
     {
       "handle": "filesystem"
