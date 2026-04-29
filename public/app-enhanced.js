@@ -80,7 +80,7 @@ function api(path, options = {}) {
     }
   }).then(async response => {
     const data = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(data.error || "Request failed");
+    if (!response.ok) throw new Error(data.error || `Request failed (${response.status})`);
     return data;
   });
 }
@@ -262,6 +262,7 @@ function renderLogin() {
           <div class="field"><label for="password">Password</label><input id="password" name="password" type="password" autocomplete="current-password" value="Superadmin1234!" required></div>
           <button class="btn primary" type="submit">${icons.save} เข้าสู่ระบบ</button>
         </div>
+        ${state.toast ? `<div class="login-error">${escapeHtml(state.toast)}</div>` : ""}
         <div class="login-help">ค่าเริ่มต้น: Superadmin / Superadmin1234!</div>
       </form>
     </section>

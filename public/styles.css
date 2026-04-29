@@ -1224,6 +1224,17 @@ button:disabled,
   font-size: 12px;
 }
 
+.login-error {
+  margin-top: 14px;
+  padding: 10px 12px;
+  border: 1px solid #f0b7a8;
+  border-radius: var(--radius);
+  background: #fff4ef;
+  color: #9c3d2f;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
 .modal-backdrop {
   position: fixed;
   z-index: 30;

@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 import { ACTIVITY_TYPES, DEFAULT_CATEGORIES, DEFAULT_ROLES, DEFAULT_SOURCES, MENU_KEYS, contentTypes } from "./src/config.js";
 import { parseBody, sendJson, sendText } from "./src/http.js";
 import { canAccessMenu, canSeeAllCustomers, findVisibleCustomer, publicSettings, requireSettingsAccess, roleDefinition, roleMenus, visibleActivities, visibleAlerts, visibleCustomers } from "./src/rbac.js";
-import { hashPassword, id } from "./src/security.js";
+import { hashPassword, id, issueSessionToken, readSessionToken } from "./src/security.js";
 import { createStore } from "./src/store.js";
 import { nowIso } from "./src/time.js";
 
@@ -261,9 +261,17 @@ function publicUser(user) {
   return safe;
 }
 
+function sessionSecret(db) {
+  return globalThis.process?.env?.NEXCRM_SESSION_SECRET || db.settings.apiToken || "nexcrm-session-v1";
+}
+
 function currentUser(req, db) {
   const header = req.headers.authorization || "";
   const token = header.startsWith("Bearer ") ? header.slice(7) : "";
+  const session = readSessionToken(token, sessionSecret(db));
+  if (session?.userId) {
+    return db.users.find(user => user.id === session.userId && user.active) || null;
+  }
   if (token && sessions.has(token)) {
     const userId = sessions.get(token);
     return db.users.find(user => user.id === userId && user.active) || null;
@@ -395,7 +403,7 @@ async function handleApi(req, res, url) {
       sendJson(res, 401, { error: "ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง" });
       return;
     }
-    const token = id("sess");
+    const token = issueSessionToken(user.id, sessionSecret(db));
     sessions.set(token, user.id);
     sendJson(res, 200, { token, user: publicUser(user) });
     return;
