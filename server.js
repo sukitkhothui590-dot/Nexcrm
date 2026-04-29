@@ -810,6 +810,8 @@ export async function handleRequest(req, res) {
   }
 }
 
+export default handleRequest;
+
 export async function startServer(port = PORT) {
   await ensureDatabase();
   const server = http.createServer(handleRequest);
