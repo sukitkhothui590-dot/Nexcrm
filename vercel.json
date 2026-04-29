@@ -1,14 +1,14 @@
 {
   "version": 2,
   "functions": {
-    "api/index.js": {
+    "api/router.js": {
       "includeFiles": "public/**"
     }
   },
   "rewrites": [
     {
       "source": "/api/:path*",
-      "destination": "/api/index.js?path=:path*"
+      "destination": "/api/router?path=:path*"
     },
     {
       "source": "/:path*",
