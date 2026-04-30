@@ -4,5 +4,8 @@ node_modules/
 data/db.json
 .env
 .env.*
+!.env.example
 !data/db.example.json
 !db/schema.sql
+
+.vercel

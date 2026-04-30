@@ -58,11 +58,45 @@ const state = {
   settings: {},
   modal: null,
   sidebarOpen: false,
+  stageFilter: "all",
   toast: ""
 };
 
+function repairMojibakeText(value) {
+  const text = String(value ?? "");
+  if (!/[àÂ]/.test(text)) return text;
+  try {
+    const bytes = Uint8Array.from(text, char => char.charCodeAt(0) & 255);
+    return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+  } catch {
+    return text;
+  }
+}
+
+function repairRenderedText(root = document) {
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  const textNodes = [];
+  while (walker.nextNode()) textNodes.push(walker.currentNode);
+  textNodes.forEach(node => {
+    const fixed = repairMojibakeText(node.nodeValue);
+    if (fixed !== node.nodeValue) node.nodeValue = fixed;
+  });
+
+  root.querySelectorAll("[title], [placeholder], input, textarea").forEach(node => {
+    ["title", "placeholder"].forEach(attribute => {
+      if (!node.hasAttribute(attribute)) return;
+      const fixed = repairMojibakeText(node.getAttribute(attribute));
+      if (fixed !== node.getAttribute(attribute)) node.setAttribute(attribute, fixed);
+    });
+    if ("value" in node && typeof node.value === "string") {
+      const fixed = repairMojibakeText(node.value);
+      if (fixed !== node.value) node.value = fixed;
+    }
+  });
+}
+
 function escapeHtml(value) {
-  return String(value ?? "")
+  return repairMojibakeText(value)
     .replaceAll("&", "&amp;")
     .replaceAll("<", "&lt;")
     .replaceAll(">", "&gt;")
@@ -132,9 +166,10 @@ function customerKind(customer) {
   const newDays = Number(state.settings.newCustomerDays || 30);
   const lostCalls = Number(state.settings.closedLostCallLimit || 6);
   const lostDays = Number(state.settings.closedLostDayLimit || 45);
-  if (customer.status === "ปิดไม่ได้" || customer.closedLostAt) return "ปิดไม่ได้";
-  if (!customer.hasPurchase && customer.status !== "ปิดการขาย" && ((customer.callCount || 0) >= lostCalls || age >= lostDays)) return "เสี่ยงปิดไม่ได้";
-  if (customer.hasPurchase || customer.purchasedAt || customer.status === "ปิดการขาย" || age > oldDays) return "ลูกค้าเก่า";
+  const status = repairMojibakeText(customer.status);
+  if (status === "ปิดไม่ได้" || customer.closedLostAt) return "ปิดไม่ได้";
+  if (!customer.hasPurchase && status !== "ปิดการขาย" && ((customer.callCount || 0) >= lostCalls || age >= lostDays)) return "เสี่ยงปิดไม่ได้";
+  if (customer.hasPurchase || customer.purchasedAt || status === "ปิดการขาย" || age > oldDays) return "ลูกค้าเก่า";
   if (!customer.hasPurchase && age <= newDays) return "ลูกค้าใหม่";
   return "กำลังติดตาม";
 }
@@ -191,11 +226,12 @@ function sourceOptions() {
 
 function statusClass(status, followUpDate, customer) {
   const kind = customer ? customerKind(customer) : "";
+  const label = repairMojibakeText(status);
   const today = new Date().toISOString().slice(0, 10);
   if (kind.includes("ปิดไม่ได้") || followUpDate && followUpDate < today) return "red";
-  if (status === "ปิดการขาย" || kind === "ลูกค้าเก่า") return "green";
-  if (String(status).includes("ติดตาม") || String(status).includes("นัด") || String(status).includes("เสนอ") || String(status).includes("ต่อรอง")) return "amber";
-  if (String(status).includes("ใหม่")) return "green";
+  if (label === "ปิดการขาย" || kind === "ลูกค้าเก่า") return "green";
+  if (label.includes("ติดตาม") || label.includes("นัด") || label.includes("เสนอ") || label.includes("ต่อรอง")) return "amber";
+  if (label.includes("ใหม่")) return "green";
   return "";
 }
 
@@ -267,6 +303,7 @@ function renderLogin() {
       </form>
     </section>
   `;
+  repairRenderedText(app);
 }
 
 function renderSidebar() {
@@ -315,9 +352,12 @@ function filteredCustomers() {
     const category = categoryById(customer.categoryId);
     const text = [customer.company, customer.contact, customer.phone, customer.email, customer.line, customer.note, customer.status, category.name, customerKind(customer)]
       .join(" ")
-      .toLowerCase();
+      .split(" ")
+      .map(normalizedText)
+      .join(" ");
     const matchesQuery = !query || text.includes(query);
     const matchesCategory = state.categoryFilter === "all" || customer.categoryId === state.categoryFilter;
+    const matchesStage = state.stageFilter === "all" || customerStage(customer) === state.stageFilter;
     const age = daysSince(customer.createdAt);
     const matchesFilter =
       state.filter === "all" ||
@@ -326,7 +366,7 @@ function filteredCustomers() {
       (state.filter === "lost" && customerKind(customer).includes("ปิดไม่ได้")) ||
       (state.filter === "added7" && age <= 7) ||
       (state.filter === "added30" && age <= 30);
-    return matchesQuery && matchesCategory && matchesFilter;
+    return matchesQuery && matchesCategory && matchesStage && matchesFilter;
   });
 }
 
@@ -343,6 +383,77 @@ function lineLink(customer) {
   if (!line) return "#";
   if (state.settings.lineMode === "lineoa") return `https://manager.line.biz/account/${encodeURIComponent(state.settings.lineOaId || "")}`;
   return `line://ti/p/${line}`;
+}
+
+const crmStages = [
+  { key: "all", label: "ทั้งหมด", hint: "ทุกดีล", tone: "neutral" },
+  { key: "new", label: "Lead ใหม่", hint: "ต้องคัดกรอง", tone: "green" },
+  { key: "followup", label: "Follow-up", hint: "ต้องเดินต่อ", tone: "amber" },
+  { key: "proposal", label: "Proposal", hint: "เสนอ/ต่อรอง", tone: "blue" },
+  { key: "won", label: "Won", hint: "ซื้อแล้ว", tone: "green" },
+  { key: "lost", label: "Risk/Lost", hint: "เสี่ยงหรือปิดไม่ได้", tone: "red" }
+];
+
+function normalizedText(value) {
+  return repairMojibakeText(value).toLowerCase();
+}
+
+function customerStage(customer) {
+  const status = normalizedText(customer.status);
+  const kind = normalizedText(customerKind(customer));
+  if (customer.closedLostAt || status.includes("ปิดไม่ได้") || kind.includes("ปิดไม่ได้") || kind.includes("เสี่ยง")) return "lost";
+  if (customer.hasPurchase || customer.purchasedAt || status.includes("ปิดการขาย") || status.includes("หลังการขาย")) return "won";
+  if (status.includes("เสนอ") || status.includes("ต่อรอง") || status.includes("เอกสาร")) return "proposal";
+  if (customer.followUpDate || status.includes("ติดตาม") || status.includes("นัด")) return "followup";
+  return "new";
+}
+
+function dueState(customer) {
+  if (!customer.followUpDate) return { key: "none", label: "ยังไม่ได้นัด", tone: "" };
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const due = new Date(customer.followUpDate);
+  due.setHours(0, 0, 0, 0);
+  const diff = Math.round((due.getTime() - today.getTime()) / 86400000);
+  if (diff < 0) return { key: "overdue", label: `เลยนัด ${Math.abs(diff)} วัน`, tone: "red" };
+  if (diff === 0) return { key: "today", label: "นัดวันนี้", tone: "amber" };
+  if (diff <= Number(state.settings.notifyBeforeDays || 1)) return { key: "soon", label: `อีก ${diff} วัน`, tone: "amber" };
+  return { key: "scheduled", label: formatDate(customer.followUpDate), tone: "green" };
+}
+
+function nextAction(customer) {
+  const stage = customerStage(customer);
+  const due = dueState(customer);
+  if (due.key === "overdue") return { label: "โทรติดตามด่วน", detail: due.label, type: "call", tone: "red" };
+  if (due.key === "today" || due.key === "soon") return { label: "ทำ follow-up", detail: due.label, type: "call", tone: "amber" };
+  if (stage === "proposal") return { label: "อัปเดตผลเสนอราคา", detail: "บันทึก quote / negotiate / won", type: "quote", tone: "blue" };
+  if (stage === "new") return { label: "คัดกรอง lead", detail: "โทรครั้งแรกและตั้งนัดถัดไป", type: "call", tone: "green" };
+  if (stage === "won") return { label: "ดูแลหลังการขาย", detail: "บันทึก after-sale", type: "after_sale", tone: "green" };
+  if (stage === "lost") return { label: "สรุปเหตุผลปิดไม่ได้", detail: "เก็บ reason เพื่อปรับ pipeline", type: "lost", tone: "red" };
+  return { label: "บันทึกกิจกรรม", detail: "อัปเดตความคืบหน้าล่าสุด", type: "visit", tone: "" };
+}
+
+function stageCount(customers, stageKey) {
+  if (stageKey === "all") return customers.length;
+  return customers.filter(customer => customerStage(customer) === stageKey).length;
+}
+
+function renderPipelineBoard(rows) {
+  return `
+    <div class="pipeline-board" aria-label="CRM pipeline">
+      ${crmStages.map(stage => {
+        const count = stageCount(state.customers, stage.key);
+        const isActive = state.stageFilter === stage.key;
+        return `
+          <button class="pipeline-card ${stage.tone} ${isActive ? "active" : ""}" data-stage-filter="${stage.key}" type="button">
+            <span>${escapeHtml(stage.label)}</span>
+            <strong>${count}</strong>
+            <small>${escapeHtml(stage.hint)}</small>
+          </button>
+        `;
+      }).join("")}
+    </div>
+  `;
 }
 
 function renderCustomers() {
@@ -386,6 +497,7 @@ function renderCustomers() {
           </div>
         </div>
       </div>
+      ${renderPipelineBoard(rows)}
       <div class="table-wrap">
         <table>
           <thead>
@@ -423,7 +535,7 @@ function renderCustomers() {
                   <td>${formatDate(customer.followUpDate)}</td>
                 </tr>
               `;
-            }).join("") || `<tr><td colspan="9"><div class="empty">ไม่พบข้อมูลลูกค้า</div></td></tr>`}
+            }).join("") || `<tr><td colspan="9"><div class="empty empty-action"><strong>ไม่พบลูกค้าที่ตรงกับเงื่อนไข</strong><span>ลองเปลี่ยน filter หรือเพิ่ม lead ใหม่เพื่อเริ่ม workflow</span><button class="btn primary" data-action="open-customer" type="button">${icons.plus} เพิ่มลูกค้า</button></div></td></tr>`}
           </tbody>
         </table>
       </div>
@@ -437,6 +549,9 @@ function renderDetailPanel() {
   if (!customer) return `<aside class="detail-panel"><div class="empty">เลือกลูกค้าเพื่อดูประวัติ</div></aside>`;
   const activities = customerActivities(customer.id);
   const category = categoryById(customer.categoryId);
+  const stage = crmStages.find(item => item.key === customerStage(customer)) || crmStages[0];
+  const due = dueState(customer);
+  const action = nextAction(customer);
   return `
     <aside class="detail-panel">
       <div class="detail-top">
@@ -451,6 +566,14 @@ function renderDetailPanel() {
           <div class="quick-stat"><b>${customer.callCount || 0}</b><span>ครั้งที่โทร</span></div>
           <div class="quick-stat"><b>${activities.length}</b><span>กิจกรรม</span></div>
           <div class="quick-stat"><b>${customer.hasPurchase ? "ซื้อแล้ว" : "ยังไม่ซื้อ"}</b><span>ซื้อขาย</span></div>
+        </div>
+        <div class="next-action ${action.tone}">
+          <div>
+            <span>${escapeHtml(stage.label)} · ${escapeHtml(due.label)}</span>
+            <strong>${escapeHtml(action.label)}</strong>
+            <small>${escapeHtml(action.detail)}</small>
+          </div>
+          <button class="btn primary" data-action="open-activity" data-id="${customer.id}" data-type="${action.type}">${icons.plus} บันทึก</button>
         </div>
       </div>
       <div class="detail-body">
@@ -478,6 +601,14 @@ function renderDetailPanel() {
           <div class="detail-section-head">
             <h3>บันทึกกิจกรรม</h3>
             <button class="btn" data-action="open-activity" data-id="${customer.id}">${icons.plus} บันทึกกิจกรรม</button>
+          </div>
+          <div class="quick-actions">
+            ${[
+              ["quote", "เสนอราคา"],
+              ["negotiate", "ต่อรอง"],
+              ["won", "ปิดการขาย"],
+              ["lost", "ปิดไม่ได้"]
+            ].map(([type, label]) => `<button class="btn ghost" data-action="open-activity" data-id="${customer.id}" data-type="${type}" type="button">${escapeHtml(label)}</button>`).join("")}
           </div>
         </section>
         <div class="timeline">
@@ -969,9 +1100,11 @@ function field(name, label, value = "", required = false, type = "text") {
 function render() {
   if (!state.token || !state.user) {
     renderLogin();
+    repairRenderedText(app);
     return;
   }
   app.innerHTML = renderWorkspace();
+  repairRenderedText(app);
 }
 
 function formData(form) {
@@ -1158,6 +1291,7 @@ app.addEventListener("click", event => {
   const rangeEl = event.target.closest("[data-report-range]");
   const bucketEl = event.target.closest("[data-report-bucket]");
   const settingsTabEl = event.target.closest("[data-settings-tab]");
+  const stageEl = event.target.closest("[data-stage-filter]");
   const selectEl = event.target.closest("[data-select-customer]");
 
   if (viewEl) {
@@ -1197,6 +1331,11 @@ app.addEventListener("click", event => {
     render();
     return;
   }
+  if (stageEl) {
+    state.stageFilter = stageEl.dataset.stageFilter;
+    render();
+    return;
+  }
   if (selectEl && !actionEl) {
     state.selectedId = selectEl.dataset.selectCustomer;
     render();
@@ -1225,7 +1364,7 @@ app.addEventListener("click", event => {
     state.user = null;
   }
   if (action === "call") state.modal = { type: "activity", customerId: id, defaultType: "call", openPhone: true };
-  if (action === "open-activity") state.modal = { type: "activity", customerId: id, defaultType: "visit", openPhone: false };
+  if (action === "open-activity") state.modal = { type: "activity", customerId: id, defaultType: actionEl.dataset.type || "visit", openPhone: false };
   if (action === "open-customer") state.modal = { type: "customer" };
   if (action === "edit-customer") state.modal = { type: "customer", customerId: id };
   if (action === "open-user") state.modal = { type: "user" };
