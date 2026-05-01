@@ -1,7 +1,10 @@
-CREATE TABLE IF NOT EXISTS nexcrm_state (
-  id text PRIMARY KEY,
-  data jsonb NOT NULL,
-  updated_at timestamptz NOT NULL DEFAULT now()
-);
-
-COMMENT ON TABLE nexcrm_state IS 'NexCrm MVP state store. Stores app data as jsonb for lean deployment; can be normalized into relational CRM tables later.';
+-- NexCRM database schema entrypoint.
+-- Run migrations with:
+--
+--   npm run db:migrate
+--
+-- The full production schema starts at:
+--
+--   db/migrations/001_initial_relational_schema.sql
+--
+-- The previous MVP `nexcrm_state` JSONB table is intentionally not created here.

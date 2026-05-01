@@ -48,6 +48,7 @@ Do not deploy with file storage for real production data. If `DATABASE_URL` is m
 ## Pre-Deploy Checklist
 
 - Run `npm run build`.
+- Run `npm run db:migrate` after setting `DATABASE_URL`.
 - Confirm `DATABASE_URL` is configured in Vercel.
 - Confirm `NEXCRM_SESSION_SECRET` is configured in Vercel.
 - Do not upload `.env`, `.vercel`, `node_modules`, or `data/db.json`.
